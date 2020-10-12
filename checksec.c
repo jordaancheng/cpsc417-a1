@@ -30,13 +30,14 @@ void init_ssl() {
 }
 
 void *read_user_input(void *arg) {
-  SSL *ssl = arg;
-
+  // SSL *ssl = arg;
   char buf[BUFFER_SIZE];
   size_t n;
+  fprintf(stderr, "\nType your message:");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
+    fprintf(stderr, "\nType your message:");
     n = strlen(buf);
     if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
       strcpy(&buf[n-1], "\r\n");
@@ -55,11 +56,12 @@ void secure_connect(const char* hostname, const char *port) {
 
   /* TODO Establish SSL context and connection */
   /* TODO Print stats about connection */
-
+  char * ssl = NULL;
   /* Create thread that will read data from stdin */
   pthread_t thread;
   pthread_create(&thread, NULL, read_user_input, ssl);
-  pthread_detach(thread);
+  pthread_join( thread, NULL);
+  //pthread_detach(thread);
   
   fprintf(stderr, "\nType your message:\n\n");
 
