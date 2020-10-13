@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include <openssl/bio.h> /* Basic Input/Output streams */
 #include <openssl/err.h> /* errors */
@@ -27,6 +28,9 @@ void report_and_exit(const char* msg) {
 void init_ssl() {
   SSL_load_error_strings();
   SSL_library_init();
+  OpenSSL_add_all_algorithms();
+  // ERR_load_BIO_strings();
+  // ERR_load_crypto_strings();
 }
 
 void *read_user_input(void *arg) {
@@ -50,13 +54,56 @@ void *read_user_input(void *arg) {
   return 0;
 }
 
-void secure_connect(const char* hostname, const char *port) {
+SSL_CTX* initialize_context() {
+  const SSL_METHOD *method;
+  SSL_CTX *ctx;
 
-  char buf[BUFFER_SIZE];
+  method = TLS_client_method();
+  ctx = SSL_CTX_new(method);
+
+  if (ctx == NULL) {
+    // ERR_print_errors_fp(stderr);
+    fprintf(stderr, "Error with context\n");
+    abort();
+  }
+  return ctx;
+}
+
+void secure_connect(const char* hostname, const char *port) {
+  // char buf[BUFFER_SIZE];
+
+  SSL *ssl = NULL;
+  SSL_CTX *ctx;
+
+  /* Commented out code will be used later */
+
+  // int server = 0;
+  // BIO *inbio = NULL;
+  // BIO *outbio = NULL;
+  // X509 *cert = NULL;
+  // X509_NAME *certname = NULL;
+
+  // inbio = BIO_new(BIO_s_file());
+  // outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
 
   /* TODO Establish SSL context and connection */
+  ctx = initialize_context();
+  ssl = SSL_new(ctx);
+
+  // server = create_socket(hostname, outbio);
+  // if (server != 0) {
+  //   BIO_printf(outbio, "Successfully made the TCP connection to: %s.\n", hostname);
+  // }
+
+  // SSL_set_fd(ssl, server);
+
+  // if (SSL_connect(ssl) != 1) {
+  //   BIO_printf(outbio, "Error: Could not build a SSL session to: %s.\n", hostname);
+  // } else {
+  //   BIO_printf(outbio, "Successfully enabled SSL/TLS session to: %s.\n", hostname);
+  // }
+
   /* TODO Print stats about connection */
-  char * ssl = NULL;
   /* Create thread that will read data from stdin */
   pthread_t thread;
   pthread_create(&thread, NULL, read_user_input, ssl);
