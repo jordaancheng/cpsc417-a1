@@ -22,56 +22,65 @@
 #define BUFFER_SIZE 1024
 #define DATE_LEN 128
 
+void print_master_key(SSL* ssl, BIO* outbio) {
 
-void ShowCerts(SSL* ssl)
-{
-    X509 *cert;
-    char *line;
-    STACK_OF(SSL_CIPHER) * supported_ciphers = SSL_get1_supported_ciphers(ssl);
-    int num = sk_SSL_CIPHER_num(supported_ciphers);
-    for (int i = 0; i < num; i++){
-      const SSL_CIPHER *c = sk_SSL_CIPHER_value(supported_ciphers, i);
-      char * p = SSL_CIPHER_get_name(c);
-      fprintf(stderr,"supported cipher: %s\n", p);
-    }
-    fprintf(stderr,"supported cipher: %d\n", num);
-    // char * ptr = supported_ciphers;
-    // int i = 0;
-    // while (ptr + i){
-    //   i = i +6;
-    //   ptr = ptr + i;
-    //   fprintf(stderr,"supported cipher: %s\n", ptr);
-    // }
+  SSL_SESSION * ssl_session = SSL_get_session(ssl);
+  unsigned char *dest = malloc(100);
+  int sizeof_master = SSL_SESSION_get_master_key(ssl_session, dest, 100);
+  // fprintf(stderr,"size of master key: %d \n", sizeof_master);
+  BIO_printf(outbio, "Master key:\n");
 
-    fprintf(stderr,"\n\The using cipher: %s\n", SSL_get_cipher(ssl));
-    cert = SSL_get_peer_certificate(ssl); /* get the server's certificate */
-    fprintf(stderr,"Server certificates:\n");
-    if ( cert != NULL )
-    {
-      ///printing the master key
-      SSL_SESSION * ssl_session = SSL_get_session(ssl);
-      unsigned char * dest = malloc(100);
-      int sizeof_master = SSL_SESSION_get_master_key(ssl_session, dest, 100 );
-      fprintf(stderr,"size of master key: %d \n", sizeof_master);
-      fprintf(stderr,"The master key: ");
-      for(int i=0;i< sizeof_master;i++){
-        fprintf(stderr,"%02x", dest[i]);
-      }
-      fprintf(stderr,"\n");
-      fprintf(stderr,"Server certificates:\n");
-      line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
-      fprintf(stderr, "Subject: %s\n", line);
-      free(line);       /* free the malloc'ed string */
-      line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
-      fprintf(stderr,"Issuer: %s\n", line);
-      free(line);       /* free the malloc'ed string */
-      X509_free(cert);     /* free the malloc'ed certificate copy */
-    }
-    else
-        fprintf(stderr,"Info: No client certificates configured.\n");
+  BIO_printf(outbio, "  ");
+  for (int i=0; i<sizeof_master; i++) {
+    BIO_printf(outbio, "%02x", dest[i]);
+  }
+  BIO_printf(outbio, "\n\n");
+  
+  free(dest);
 }
 
+void print_supported_ciphers(SSL *ssl, BIO* outbio) {
 
+  STACK_OF(SSL_CIPHER) * supported_ciphers = SSL_get1_supported_ciphers(ssl);
+  int num = sk_SSL_CIPHER_num(supported_ciphers);
+
+  BIO_printf(outbio, "Supported cipher suites:\n");
+  for (int i = 0; i < num ;i++) {
+    const SSL_CIPHER *c = sk_SSL_CIPHER_value(supported_ciphers, i);
+    const char * p = SSL_CIPHER_get_name(c);
+    BIO_printf(outbio, "  %s\n", p);
+  }
+  BIO_printf(outbio,"Using cipher suite: %s\n", SSL_get_cipher(ssl));
+}
+
+void print_server_certificate(SSL* ssl, BIO* outbio) {
+
+  X509 *cert = NULL;
+  // get server's certficiate into X509 structure
+  cert = SSL_get_peer_certificate(ssl);
+  if (cert == NULL) {
+    fprintf(stderr, "Error: Could not get a certificate.\n");
+  }
+  else {
+    fprintf(stderr, "Retrieved the server's certificate.\n");
+  }
+
+  // TODO: check if server provided a cert
+  //       if not: cert version = NONE, don't print public key
+  // TODO: get cert version
+  // TODO: verify vertf
+  // TODO: get date/time range when cert is valid
+  // TODO: get cert subject all key-value entries
+  // TODO: get cert issuer all key-value entries
+
+  EVP_PKEY *public_key = NULL;
+  if ((public_key = X509_get_pubkey(cert)) == NULL) {
+    fprintf(stderr, "Error getting public key from certificate.\n");
+  }
+  if(!PEM_write_bio_PUBKEY(outbio, public_key)) {
+    fprintf(stderr, "Error writing public key data in PEM format.\n");
+  }
+}
 
 void report_and_exit(const char* msg) {
   perror(msg);
@@ -161,13 +170,13 @@ int establish_socket(const char* hostname, const char* port) {
     char* ip_address = get_address_from_sockaddr_struct(res);
     printf("ip_addres = %s\n", ip_address);
 
-    printf("res->ai_family = %d\n", res->ai_family);
-    printf("res->ai_socktype = %d\n", res->ai_socktype);
-    printf("res->ai_protocol = %d\n", res->ai_protocol);
+    // printf("res->ai_family = %d\n", res->ai_family);
+    // printf("res->ai_socktype = %d\n", res->ai_socktype);
+    // printf("res->ai_protocol = %d\n", res->ai_protocol);
 
     // Create the socket
     sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    printf("sock_fd = %d\n\n", sock_fd);
+    // printf("sock_fd = %d\n\n", sock_fd);
     if (sock_fd == 1) continue;
 
     // If connected, break out of loop
@@ -194,11 +203,10 @@ void secure_connect(const char* hostname, const char *port) {
   int server = 0;
   // BIO *inbio = NULL;
   BIO *outbio = NULL;
-  X509 *cert = NULL;
   // X509_NAME *certname = NULL;
 
   // inbio = BIO_new(BIO_s_file());
-  outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
+  outbio = BIO_new_fp(stderr, BIO_NOCLOSE);
 
   /* TODO Establish SSL context and connection */
   
@@ -220,29 +228,12 @@ void secure_connect(const char* hostname, const char *port) {
   } else {
     fprintf(stderr, "Initiaited a SSL handshake session.\n");
   }
-  fprintf(stderr,"\n\n");
-  ShowCerts(ssl);
-
-  // get server's certficiate into X509 structure
-  cert = SSL_get_peer_certificate(ssl);
-  if (cert == NULL) {
-    fprintf(stderr, "Error: Could not get a certificate from: %s.\n", hostname);
-  }
-  else {
-    fprintf(stderr, "Retrieved the server's certificate from: %s.\n", hostname);
-  }
-
-  EVP_PKEY *public_key = NULL;
-  if ((public_key = X509_get_pubkey(cert)) == NULL) {
-    fprintf(stderr, "Error getting public key from certificate.\n");
-  }
-
-  if(!PEM_write_bio_PUBKEY(outbio, public_key)) {
-    fprintf(stderr, "Error writing public key data in PEM format.\n");
-  }
-
 
   /* TODO Print stats about connection */
+  print_master_key(ssl, outbio);
+  print_supported_ciphers(ssl, outbio);
+  print_server_certificate(ssl, outbio);
+
   /* Create thread that will read data from stdin */
   pthread_t thread;
   pthread_create(&thread, NULL, read_user_input, ssl);
