@@ -53,7 +53,7 @@ void print_supported_ciphers(SSL *ssl, BIO* outbio) {
   BIO_printf(outbio,"Using cipher suite: %s\n", SSL_get_cipher(ssl));
 }
 
-void print_server_certificate(SSL* ssl, BIO* outbio) {
+void print_server_certificate(SSL* ssl, SSL_CTX* ctx, BIO* outbio) {
 
   X509 *cert = NULL;
   // get server's certficiate into X509 structure
@@ -67,8 +67,35 @@ void print_server_certificate(SSL* ssl, BIO* outbio) {
 
   // TODO: check if server provided a cert
   //       if not: cert version = NONE, don't print public key
+
   // TODO: get cert version
-  // TODO: verify vertf
+  BIO_printf(outbio, "Certificate version     : %ld\n", X509_get_version(cert)+1);
+
+  // TODO: verify cert
+  int ret;
+  X509_STORE* store = NULL;
+  X509_STORE_CTX* verify_ctx = NULL;
+
+  if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
+    BIO_printf(outbio, "Error: failed to specify default paths.\n");
+  }
+
+  store = SSL_CTX_get_cert_store(ctx);
+
+  // if (!(store=X509_STORE_new())) {
+  //    BIO_printf(outbio, "Error creating X509_STORE_CTX object\n");
+  // }
+  // SSL_CTX_set_cert_store(ctx, store);
+
+  verify_ctx = X509_STORE_CTX_new();
+  X509_STORE_CTX_init(verify_ctx, store, cert, NULL);
+
+  ret = X509_verify_cert(verify_ctx);
+  int errnum = X509_STORE_CTX_get_error(verify_ctx);
+  BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(errnum));
+
+  BIO_printf(outbio, "Verification return code: %d\n", ret);
+
   // TODO: get date/time range when cert is valid
   // TODO: get cert subject all key-value entries
   // TODO: get cert issuer all key-value entries
@@ -232,7 +259,8 @@ void secure_connect(const char* hostname, const char *port) {
   /* TODO Print stats about connection */
   print_master_key(ssl, outbio);
   print_supported_ciphers(ssl, outbio);
-  print_server_certificate(ssl, outbio);
+  BIO_printf(outbio, "\n");
+  print_server_certificate(ssl, ctx, outbio);
 
   /* Create thread that will read data from stdin */
   pthread_t thread;
