@@ -15,11 +15,62 @@
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <openssl/pem.h>
+#include <openssl/safestack.h>
 
 #include <pthread.h>
 
 #define BUFFER_SIZE 1024
 #define DATE_LEN 128
+
+
+void ShowCerts(SSL* ssl)
+{
+    X509 *cert;
+    char *line;
+    STACK_OF(SSL_CIPHER) * supported_ciphers = SSL_get1_supported_ciphers(ssl);
+    int num = sk_SSL_CIPHER_num(supported_ciphers);
+    for (int i = 0; i < num; i++){
+      const SSL_CIPHER *c = sk_SSL_CIPHER_value(supported_ciphers, i);
+      char * p = SSL_CIPHER_get_name(c);
+      fprintf(stderr,"supported cipher: %s\n", p);
+    }
+    fprintf(stderr,"supported cipher: %d\n", num);
+    // char * ptr = supported_ciphers;
+    // int i = 0;
+    // while (ptr + i){
+    //   i = i +6;
+    //   ptr = ptr + i;
+    //   fprintf(stderr,"supported cipher: %s\n", ptr);
+    // }
+
+    fprintf(stderr,"\n\The using cipher: %s\n", SSL_get_cipher(ssl));
+    cert = SSL_get_peer_certificate(ssl); /* get the server's certificate */
+    fprintf(stderr,"Server certificates:\n");
+    if ( cert != NULL )
+    {
+      ///printing the master key
+      SSL_SESSION * ssl_session = SSL_get_session(ssl);
+      unsigned char * dest = malloc(100);
+      int sizeof_master = SSL_SESSION_get_master_key(ssl_session, dest, 100 );
+      fprintf(stderr,"size of master key: %d \n", sizeof_master);
+      fprintf(stderr,"The master key: ");
+      for(int i=0;i< sizeof_master;i++){
+        fprintf(stderr,"%02x", dest[i]);
+      }
+      fprintf(stderr,"\n");
+      fprintf(stderr,"Server certificates:\n");
+      line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+      fprintf(stderr, "Subject: %s\n", line);
+      free(line);       /* free the malloc'ed string */
+      line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
+      fprintf(stderr,"Issuer: %s\n", line);
+      free(line);       /* free the malloc'ed string */
+      X509_free(cert);     /* free the malloc'ed certificate copy */
+    }
+    else
+        fprintf(stderr,"Info: No client certificates configured.\n");
+}
+
 
 
 void report_and_exit(const char* msg) {
@@ -40,10 +91,11 @@ void *read_user_input(void *arg) {
   // SSL *ssl = arg;
   char buf[BUFFER_SIZE];
   size_t n;
+  fprintf(stderr, "\nType your message: ");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
-    fprintf(stderr, "\nType your message:");
+    fprintf(stderr, "\nType your message: ");
     n = strlen(buf);
     if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
       strcpy(&buf[n-1], "\r\n");
@@ -158,15 +210,18 @@ void secure_connect(const char* hostname, const char *port) {
   // create & establish TCP socket connection
   server = establish_socket(hostname, port);
   if (server != 0) {
-    fprintf(stdout, "Successfully made TCP connection to %s on %s.\n", hostname, port);
+    fprintf(stderr, "Successfully made TCP connection to %s on %s.\n", hostname, port);
   }
 
   SSL_set_fd(ssl, server);
   if (SSL_connect(ssl) != 1) {
     fprintf(stderr, "Error: Could not initiate a SSL handshake session.\n");
+    exit(1);
   } else {
-    fprintf(stdout, "Initiaited a SSL handshake session.\n");
+    fprintf(stderr, "Initiaited a SSL handshake session.\n");
   }
+  fprintf(stderr,"\n\n");
+  ShowCerts(ssl);
 
   // get server's certficiate into X509 structure
   cert = SSL_get_peer_certificate(ssl);
