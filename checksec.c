@@ -146,10 +146,16 @@ void ShowCerts(SSL* ssl)
     fprintf(stderr,"Server certificates:\n");
     if ( cert != NULL )
     {
+        ///printing the master key
         SSL_SESSION * ssl_session = SSL_get_session(ssl);
-        char * dest = malloc(100);
-        SSL_SESSION_get_master_key(ssl_session, dest, 100 );
-        fprintf(stderr,"Master key: %s\n", dest);
+        unsigned char * dest = malloc(100);
+        int sizeof_master = SSL_SESSION_get_master_key(ssl_session, dest, 100 );
+        fprintf(stderr,"size of master key: %d \n", sizeof_master);
+        fprintf(stderr,"The master key: ");
+        for(int i=0;i< sizeof_master;i++){
+          fprintf(stderr,"%02x", dest[i]);
+        }
+        fprintf(stderr,"\n");
         fprintf(stderr,"Server certificates:\n");
         line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
         fprintf(stderr, "Subject: %s\n", line);
