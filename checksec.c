@@ -141,12 +141,12 @@ void secure_connect(const char* hostname, const char *port) {
 
   int server = 0;
   // BIO *inbio = NULL;
-  // BIO *outbio = NULL;
-  // X509 *cert = NULL;
+  BIO *outbio = NULL;
+  X509 *cert = NULL;
   // X509_NAME *certname = NULL;
 
   // inbio = BIO_new(BIO_s_file());
-  // outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
+  outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
 
   /* TODO Establish SSL context and connection */
   
@@ -158,8 +158,34 @@ void secure_connect(const char* hostname, const char *port) {
   // create & establish TCP socket connection
   server = establish_socket(hostname, port);
   if (server != 0) {
-    fprintf(stdout, "Successfully made TCP connection to %s on %s", hostname, port);
+    fprintf(stdout, "Successfully made TCP connection to %s on %s.\n", hostname, port);
   }
+
+  SSL_set_fd(ssl, server);
+  if (SSL_connect(ssl) != 1) {
+    fprintf(stderr, "Error: Could not initiate a SSL handshake session.\n");
+  } else {
+    fprintf(stdout, "Initiaited a SSL handshake session.\n");
+  }
+
+  // get server's certficiate into X509 structure
+  cert = SSL_get_peer_certificate(ssl);
+  if (cert == NULL) {
+    fprintf(stderr, "Error: Could not get a certificate from: %s.\n", hostname);
+  }
+  else {
+    fprintf(stderr, "Retrieved the server's certificate from: %s.\n", hostname);
+  }
+
+  EVP_PKEY *public_key = NULL;
+  if ((public_key = X509_get_pubkey(cert)) == NULL) {
+    fprintf(stderr, "Error getting public key from certificate.\n");
+  }
+
+  if(!PEM_write_bio_PUBKEY(outbio, public_key)) {
+    fprintf(stderr, "Error writing public key data in PEM format.\n");
+  }
+
 
   /* TODO Print stats about connection */
   /* Create thread that will read data from stdin */
