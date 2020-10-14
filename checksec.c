@@ -40,7 +40,6 @@ void *read_user_input(void *arg) {
   // SSL *ssl = arg;
   char buf[BUFFER_SIZE];
   size_t n;
-  fprintf(stderr, "\nType your message:");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
@@ -89,14 +88,13 @@ SSL_CTX* initialize_context() {
   ctx = SSL_CTX_new(method);
 
   if (ctx == NULL) {
-    // ERR_print_errors_fp(stderr);
     fprintf(stderr, "Error: Unable to create a new SSL context structure.\n");
     abort();
   }
   return ctx;
 }
 
-int establish_connection(const char* hostname, const char* port) {
+int establish_socket(const char* hostname, const char* port) {
   int sock_fd, error;
   struct addrinfo *result, *res;
 
@@ -113,11 +111,11 @@ int establish_connection(const char* hostname, const char* port) {
 
     printf("res->ai_family = %d\n", res->ai_family);
     printf("res->ai_socktype = %d\n", res->ai_socktype);
-    printf("res->ai_protocol = %d\n\n", res->ai_protocol);
+    printf("res->ai_protocol = %d\n", res->ai_protocol);
 
     // Create the socket
     sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    printf("sock_fd = %d\n", sock_fd);
+    printf("sock_fd = %d\n\n", sock_fd);
     if (sock_fd == 1) continue;
 
     // If connected, break out of loop
@@ -127,13 +125,10 @@ int establish_connection(const char* hostname, const char* port) {
 
   // Success
   if (res == NULL) {
-    fprintf(stderr, "Error: could not connect to host %s", hostname);
-    return -1;
-  } else {
-    fprintf(stdout, "Connected!");
-  }
+    fprintf(stderr, "Error: could not connect to host %s on port %s", hostname, port);
+  } 
 
-  return 1;
+  return sock_fd;
 }
 
 void secure_connect(const char* hostname, const char *port) {
@@ -154,23 +149,17 @@ void secure_connect(const char* hostname, const char *port) {
   // outbio = BIO_new_fp(stdout, BIO_NOCLOSE);
 
   /* TODO Establish SSL context and connection */
+  
+  // create & initialize a new SSL context
   ctx = initialize_context();
+  // create new SSL connection state object
   ssl = SSL_new(ctx);
 
-  server = establish_connection(hostname, port);
-
-  // server = create_socket(hostname, outbio);
-  // if (server != 0) {
-  //   BIO_printf(outbio, "Successfully made the TCP connection to: %s.\n", hostname);
-  // }
-
-  // SSL_set_fd(ssl, server);
-
-  // if (SSL_connect(ssl) != 1) {
-  //   BIO_printf(outbio, "Error: Could not build a SSL session to: %s.\n", hostname);
-  // } else {
-  //   BIO_printf(outbio, "Successfully enabled SSL/TLS session to: %s.\n", hostname);
-  // }
+  // create & establish TCP socket connection
+  server = establish_socket(hostname, port);
+  if (server != 0) {
+    fprintf(stdout, "Successfully made TCP connection to %s on %s", hostname, port);
+  }
 
   /* TODO Print stats about connection */
   /* Create thread that will read data from stdin */
@@ -179,8 +168,6 @@ void secure_connect(const char* hostname, const char *port) {
   pthread_join( thread, NULL);
   //pthread_detach(thread);
   
-  fprintf(stdout, "\nType your message:\n\n");
-
   /* TODO Receive messages and print them to stdout */
 }
 
