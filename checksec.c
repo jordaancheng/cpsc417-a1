@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <openssl/bio.h> /* Basic Input/Output streams */
 #include <openssl/err.h> /* errors */
@@ -56,53 +57,54 @@ void print_supported_ciphers(SSL *ssl, BIO* outbio) {
 void print_server_certificate(SSL* ssl, SSL_CTX* ctx, BIO* outbio) {
 
   X509 *cert = NULL;
+
   // get server's certficiate into X509 structure
   cert = SSL_get_peer_certificate(ssl);
-  if (cert == NULL) {
-    fprintf(stderr, "Error: Could not get a certificate.\n");
-  }
-  else {
-    fprintf(stderr, "Retrieved the server's certificate.\n");
-  }
 
   // TODO: check if server provided a cert
   //       if not: cert version = NONE, don't print public key
-
-  // TODO: get cert version
-  BIO_printf(outbio, "Certificate version     : %ld\n", X509_get_version(cert)+1);
-
-  // TODO: verify cert
-
-  // What I did to verify certificate before: looks like you don't need to do all this
-  // Jonatan's response: https://piazza.com/class/ketf3mhzi2gp?cid=75
-  // X509_STORE* store = NULL;
-  // X509_STORE_CTX* verify_ctx = NULL;
-  // store = SSL_CTX_get_cert_store(ctx);
-  // if (!(store=X509_STORE_new())) {
-  //    BIO_printf(outbio, "Error creating X509_STORE_CTX object\n");
-  // }
-  // SSL_CTX_set_cert_store(ctx, store);
-  // verify_ctx = X509_STORE_CTX_new();
-  // X509_STORE_CTX_init(verify_ctx, store, cert, NULL);
-  // ret = X509_verify_cert(verify_ctx);
-  
-  // Jonatan said you can get verification results from the SSL object itself
-  int ret;
-  ret = (int) SSL_get_verify_result(ssl);
-  BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(ret));
-
-  // BIO_printf(outbio, "Verification return code: %d\n", ret);
-
-  // TODO: get date/time range when cert is valid
-  // TODO: get cert subject all key-value entries
-  // TODO: get cert issuer all key-value entries
-
-  EVP_PKEY *public_key = NULL;
-  if ((public_key = X509_get_pubkey(cert)) == NULL) {
-    fprintf(stderr, "Error getting public key from certificate.\n");
+  if (cert == NULL) {
+    BIO_printf(outbio, "Certificate version     : NONE\n");
   }
-  if(!PEM_write_bio_PUBKEY(outbio, public_key)) {
-    fprintf(stderr, "Error writing public key data in PEM format.\n");
+  else {
+    // TODO: get cert version
+    BIO_printf(outbio, "Certificate version     : %ld\n", X509_get_version(cert)+1);
+
+    // TODO: verify cert
+    // Jonatan said you can get verification results from the SSL object itself
+    int result;
+    result = (int) SSL_get_verify_result(ssl);
+    BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(result));
+
+    // TODO: get date/time range when cert is valid
+    ASN1_TIME *not_before_time = X509_getm_notBefore(cert);
+    ASN1_TIME *not_after_time = X509_getm_notAfter(cert);
+
+    BIO_printf(outbio, "Certificate start time  : ");
+    ASN1_TIME_print(outbio, not_before_time);
+    BIO_printf(outbio, "\nCertificate end time    : ");
+    ASN1_TIME_print(outbio, not_after_time);
+    BIO_printf(outbio, "\n\n");
+
+    // TODO: get cert subject all key-value entries
+    BIO_printf(outbio, "Certificate Subject:\n");
+    X509_NAME *cert_subject = X509_NAME_new();
+    cert_subject = X509_get_subject_name(cert);
+    X509_NAME_print_ex(outbio, cert_subject, 6, XN_FLAG_MULTILINE);
+    BIO_printf(outbio, "\n\n");
+
+    // TODO: get cert issuer all key-value entries
+    BIO_printf(outbio, "Certificate Issuer:\n");
+    X509_NAME *cert_issuer = X509_NAME_new();
+    cert_issuer = X509_get_issuer_name(cert);
+    X509_NAME_print_ex(outbio, cert_issuer, 6, XN_FLAG_MULTILINE);
+    BIO_printf(outbio, "\n\n");
+
+    // get server public key
+    BIO_printf(outbio, "Server public key:\n");
+    EVP_PKEY *public_key = X509_get_pubkey(cert);
+    PEM_write_bio_PUBKEY(outbio, public_key);
+    BIO_printf(outbio, "\n");
   }
 }
 
@@ -124,11 +126,11 @@ void *read_user_input(void *arg) {
   // SSL *ssl = arg;
   char buf[BUFFER_SIZE];
   size_t n;
-  fprintf(stderr, "\nType your message: ");
+  fprintf(stderr, "Type your message: ");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
-    fprintf(stderr, "\nType your message: ");
+    fprintf(stderr, "Type your message: ");
     n = strlen(buf);
     if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
       strcpy(&buf[n-1], "\r\n");
