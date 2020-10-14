@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include <openssl/bio.h> /* Basic Input/Output streams */
 #include <openssl/err.h> /* errors */
@@ -54,6 +57,30 @@ void *read_user_input(void *arg) {
   return 0;
 }
 
+/*  Helper function: use this if you want to extract 
+    IPv4 or IPv6 address from a sockaddr struct
+    Source: https://stackoverflow.com/questions/1276294/getting-ipv4-address-from-a-sockaddr-structure */
+char* get_address_from_sockaddr_struct(struct addrinfo *res) {
+  char *s = NULL;
+  switch(res->ai_addr->sa_family) {
+    case AF_INET: {
+      struct sockaddr_in *addr_in = (struct sockaddr_in *) res->ai_addr;
+      s = malloc(INET_ADDRSTRLEN);
+      inet_ntop(AF_INET, &(addr_in->sin_addr), s, INET_ADDRSTRLEN);
+      break;
+    }
+    case AF_INET6: {
+      struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) res->ai_addr;
+      s = malloc(INET_ADDRSTRLEN);
+      inet_ntop(AF_INET, &(addr_in6->sin6_addr), s, INET_ADDRSTRLEN);
+      break;
+    }
+    default:
+      break;
+  }
+  return s;
+}
+
 SSL_CTX* initialize_context() {
   const SSL_METHOD *method;
   SSL_CTX *ctx;
@@ -63,10 +90,50 @@ SSL_CTX* initialize_context() {
 
   if (ctx == NULL) {
     // ERR_print_errors_fp(stderr);
-    fprintf(stderr, "Error with context\n");
+    fprintf(stderr, "Error: Unable to create a new SSL context structure.\n");
     abort();
   }
   return ctx;
+}
+
+int establish_connection(const char* hostname, const char* port) {
+  int sock_fd, error;
+  struct addrinfo *result, *res;
+
+  error = getaddrinfo(hostname, port, NULL, &result);
+  if (error != 0) {
+    fprintf(stderr, "Error: Hostname %s in getaddrinfo: %s.\n", hostname, gai_strerror(error));
+    abort();
+  }
+
+  for (res = result; res != NULL; res = res->ai_next) {
+
+    char* ip_address = get_address_from_sockaddr_struct(res);
+    printf("ip_addres = %s\n", ip_address);
+
+    printf("res->ai_family = %d\n", res->ai_family);
+    printf("res->ai_socktype = %d\n", res->ai_socktype);
+    printf("res->ai_protocol = %d\n\n", res->ai_protocol);
+
+    // Create the socket
+    sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    printf("sock_fd = %d\n", sock_fd);
+    if (sock_fd == 1) continue;
+
+    // If connected, break out of loop
+    if (connect(sock_fd, res->ai_addr, res->ai_addrlen) != -1) break;
+    close(sock_fd);
+  }
+
+  // Success
+  if (res == NULL) {
+    fprintf(stderr, "Error: could not connect to host %s", hostname);
+    return -1;
+  } else {
+    fprintf(stdout, "Connected!");
+  }
+
+  return 1;
 }
 
 void secure_connect(const char* hostname, const char *port) {
@@ -77,7 +144,7 @@ void secure_connect(const char* hostname, const char *port) {
 
   /* Commented out code will be used later */
 
-  // int server = 0;
+  int server = 0;
   // BIO *inbio = NULL;
   // BIO *outbio = NULL;
   // X509 *cert = NULL;
@@ -89,6 +156,8 @@ void secure_connect(const char* hostname, const char *port) {
   /* TODO Establish SSL context and connection */
   ctx = initialize_context();
   ssl = SSL_new(ctx);
+
+  server = establish_connection(hostname, port);
 
   // server = create_socket(hostname, outbio);
   // if (server != 0) {
@@ -110,7 +179,7 @@ void secure_connect(const char* hostname, const char *port) {
   pthread_join( thread, NULL);
   //pthread_detach(thread);
   
-  fprintf(stderr, "\nType your message:\n\n");
+  fprintf(stdout, "\nType your message:\n\n");
 
   /* TODO Receive messages and print them to stdout */
 }
