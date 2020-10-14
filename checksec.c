@@ -143,8 +143,13 @@ void ShowCerts(SSL* ssl)
     X509 *cert;
     char *line;
     cert = SSL_get_peer_certificate(ssl); /* get the server's certificate */
+    fprintf(stderr,"Server certificates:\n");
     if ( cert != NULL )
     {
+        SSL_SESSION * ssl_session = SSL_get_session(ssl);
+        char * dest = malloc(100);
+        SSL_SESSION_get_master_key(ssl_session, dest, 100 );
+        fprintf(stderr,"Master key: %s\n", dest);
         fprintf(stderr,"Server certificates:\n");
         line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
         fprintf(stderr, "Subject: %s\n", line);
