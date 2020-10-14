@@ -72,29 +72,26 @@ void print_server_certificate(SSL* ssl, SSL_CTX* ctx, BIO* outbio) {
   BIO_printf(outbio, "Certificate version     : %ld\n", X509_get_version(cert)+1);
 
   // TODO: verify cert
-  int ret;
-  X509_STORE* store = NULL;
-  X509_STORE_CTX* verify_ctx = NULL;
 
-  if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
-    BIO_printf(outbio, "Error: failed to specify default paths.\n");
-  }
-
-  store = SSL_CTX_get_cert_store(ctx);
-
+  // What I did to verify certificate before: looks like you don't need to do all this
+  // Jonatan's response: https://piazza.com/class/ketf3mhzi2gp?cid=75
+  // X509_STORE* store = NULL;
+  // X509_STORE_CTX* verify_ctx = NULL;
+  // store = SSL_CTX_get_cert_store(ctx);
   // if (!(store=X509_STORE_new())) {
   //    BIO_printf(outbio, "Error creating X509_STORE_CTX object\n");
   // }
   // SSL_CTX_set_cert_store(ctx, store);
+  // verify_ctx = X509_STORE_CTX_new();
+  // X509_STORE_CTX_init(verify_ctx, store, cert, NULL);
+  // ret = X509_verify_cert(verify_ctx);
+  
+  // Jonatan said you can get verification results from the SSL object itself
+  int ret;
+  ret = (int) SSL_get_verify_result(ssl);
+  BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(ret));
 
-  verify_ctx = X509_STORE_CTX_new();
-  X509_STORE_CTX_init(verify_ctx, store, cert, NULL);
-
-  ret = X509_verify_cert(verify_ctx);
-  int errnum = X509_STORE_CTX_get_error(verify_ctx);
-  BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(errnum));
-
-  BIO_printf(outbio, "Verification return code: %d\n", ret);
+  // BIO_printf(outbio, "Verification return code: %d\n", ret);
 
   // TODO: get date/time range when cert is valid
   // TODO: get cert subject all key-value entries
@@ -241,6 +238,11 @@ void secure_connect(const char* hostname, const char *port) {
   ctx = initialize_context();
   // create new SSL connection state object
   ssl = SSL_new(ctx);
+
+  // set default verify paths on the context before connection is established
+  if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
+    BIO_printf(outbio, "Error: failed to specify default paths.\n");
+  }
 
   // create & establish TCP socket connection
   server = establish_socket(hostname, port);
