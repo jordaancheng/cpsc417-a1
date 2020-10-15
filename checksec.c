@@ -123,18 +123,24 @@ void init_ssl() {
 }
 
 void *read_user_input(void *arg) {
-  // SSL *ssl = arg;
+  SSL *ssl = arg;
+  char msg_resp[1024];
   char buf[BUFFER_SIZE];
   size_t n;
   fprintf(stderr, "Type your message: ");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
-    fprintf(stderr, "Type your message: ");
     n = strlen(buf);
     if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
       strcpy(&buf[n-1], "\r\n");
+    SSL_write(ssl, buf, n);
     
+    int bytes = SSL_read(ssl, msg_resp, sizeof(msg_resp));
+    msg_resp[bytes] = 0;
+    printf("Received: \"%s\"\n", msg_resp);
+    fprintf(stderr, "Type your message: ");
+    //fprintf(stderr, "--> %s ", buf);
     /* TODO Send message */
   }
 
