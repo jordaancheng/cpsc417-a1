@@ -26,6 +26,7 @@
 struct arg_struct {
   SSL *ssl;
   SSL_CTX *ctx;
+  int server;
 };
 
 void print_master_key(SSL* ssl, BIO* outbio) {
@@ -127,6 +128,7 @@ void *read_user_input(void *arg) {
   struct arg_struct *args = arg;
   SSL *ssl = args->ssl;
   SSL_CTX * ctx = args->ctx;
+  int server = args->server;
   char buf[BUFFER_SIZE];
   size_t n;
   fprintf(stderr, "Type your message: \n");
@@ -143,23 +145,20 @@ void *read_user_input(void *arg) {
 
   /* TODO EOF in stdin, shutdown the connection */
 
+  fprintf(stderr, "Finished TLS connection with server. Shutting down.\n");
   // Ideally we'd want to terminate server here when user hits ctrl-D, but I can't
   // cause I don't know how to pass in ssl & ctx as parameters of this method
-  // SSL_CTX_free(ctx);
-  // SSL_free(ssl);
-  // close(server);
-
-  // Or we can just include an exit(0)? Not sure if this is ideal tho...
-  //exit(0);
-
-  fprintf(stderr, "Finished TLS connection with server. Shutting down.\n");
+  SSL_CTX_free(ctx);
+  SSL_free(ssl);
+  close(server);
+  // Or we can just include an exit(0)? Not sure if this is ideal tho...exit(0);
+  exit(0);
   return 0;
 }
 
 void *read_ssl_response(void *arg) {
   char buf[1024];
   SSL *ssl = arg;
-  SSL_CTX *ctx = arg+1;
   while(1) {
     int bytes = SSL_read(ssl, buf, sizeof(buf));
 	  if ( bytes > 0 ) {
