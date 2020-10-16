@@ -22,6 +22,12 @@
 #define BUFFER_SIZE 1024
 #define DATE_LEN 128
 
+//https://stackoverflow.com/questions/1352749/multiple-arguments-to-function-called-by-pthread-create
+struct arg_struct {
+  SSL *ssl;
+  SSL_CTX *ctx;
+};
+
 void print_master_key(SSL* ssl, BIO* outbio) {
 
   SSL_SESSION * ssl_session = SSL_get_session(ssl);
@@ -118,7 +124,9 @@ void init_ssl() {
 }
 
 void *read_user_input(void *arg) {
-  SSL *ssl = arg;
+  struct arg_struct *args = arg;
+  SSL *ssl = args->ssl;
+  SSL_CTX * ctx = args->ctx;
   char buf[BUFFER_SIZE];
   size_t n;
   fprintf(stderr, "Type your message: \n");
@@ -151,6 +159,7 @@ void *read_user_input(void *arg) {
 void *read_ssl_response(void *arg) {
   char buf[1024];
   SSL *ssl = arg;
+  SSL_CTX *ctx = arg+1;
   while(1) {
     int bytes = SSL_read(ssl, buf, sizeof(buf));
 	  if ( bytes > 0 ) {
@@ -235,9 +244,12 @@ void secure_connect(const char* hostname, const char *port) {
 
   /* TODO Receive messages and print them to stdout */
   /* Create thread that will read data from stdin */
+  struct arg_struct *args = malloc(sizeof(struct arg_struct));
+  args->ssl = ssl;
+  args->ctx = ctx;
   pthread_t thread;
   pthread_t thread2;
-  pthread_create(&thread, NULL, read_user_input, ssl);
+  pthread_create(&thread, NULL, read_user_input, (void *)args);
   pthread_create(&thread2, NULL, read_ssl_response, ssl);
   pthread_join( thread, NULL);
   pthread_join( thread2, NULL);
