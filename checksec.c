@@ -4,7 +4,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
 
 #include <openssl/bio.h> /* Basic Input/Output streams */
@@ -28,16 +27,12 @@ void print_master_key(SSL* ssl, BIO* outbio) {
   SSL_SESSION * ssl_session = SSL_get_session(ssl);
   unsigned char *dest = malloc(100);
   int sizeof_master = SSL_SESSION_get_master_key(ssl_session, dest, 100);
-  // fprintf(stderr,"size of master key: %d \n", sizeof_master);
-  BIO_printf(outbio, "Master key:\n");
-
-  BIO_printf(outbio, "  ");
+  BIO_printf(outbio, "Master key:\n  ");
   for (int i=0; i<sizeof_master; i++) {
     BIO_printf(outbio, "%02x", dest[i]);
   }
-  BIO_printf(outbio, "\n\n");
-  
   free(dest);
+  BIO_printf(outbio, "\n\n");
 }
 
 void print_supported_ciphers(SSL *ssl, BIO* outbio) {
@@ -52,31 +47,29 @@ void print_supported_ciphers(SSL *ssl, BIO* outbio) {
     BIO_printf(outbio, "  %s\n", p);
   }
   BIO_printf(outbio,"Using cipher suite: %s\n", SSL_get_cipher(ssl));
+  BIO_printf(outbio, "\n");
 }
 
 void print_server_certificate(SSL* ssl, SSL_CTX* ctx, BIO* outbio) {
 
-  X509 *cert = NULL;
+  /* Get server's certficiate into X509 structure */
+  X509 *cert = SSL_get_peer_certificate(ssl);
 
-  // get server's certficiate into X509 structure
-  cert = SSL_get_peer_certificate(ssl);
-
-  // TODO: check if server provided a cert
-  //       if not: cert version = NONE, don't print public key
+  /* Check if server provided a cert
+     if not, cert version = NONE & don't print public key */
   if (cert == NULL) {
     BIO_printf(outbio, "Certificate version     : NONE\n");
   }
   else {
-    // TODO: get cert version
+    /* Get cert version */
     BIO_printf(outbio, "Certificate version     : %ld\n", X509_get_version(cert)+1);
 
-    // TODO: verify cert
-    // Jonatan said you can get verification results from the SSL object itself
-    int result;
-    result = (int) SSL_get_verify_result(ssl);
+    /* Verify cert */
+    /* Jonatan said you can get verification results from the SSL object itself */
+    int result = (int) SSL_get_verify_result(ssl);
     BIO_printf(outbio, "Certificate verification: %s\n", X509_verify_cert_error_string(result));
 
-    // TODO: get date/time range when cert is valid
+    /* Get date/time range when cert is valid */
     ASN1_TIME *not_before_time = X509_getm_notBefore(cert);
     ASN1_TIME *not_after_time = X509_getm_notAfter(cert);
 
@@ -86,26 +79,30 @@ void print_server_certificate(SSL* ssl, SSL_CTX* ctx, BIO* outbio) {
     ASN1_TIME_print(outbio, not_after_time);
     BIO_printf(outbio, "\n\n");
 
-    // TODO: get cert subject all key-value entries
+    /* Get cert subject all key-value entries */
     BIO_printf(outbio, "Certificate Subject:\n");
     X509_NAME *cert_subject = X509_NAME_new();
     cert_subject = X509_get_subject_name(cert);
     X509_NAME_print_ex(outbio, cert_subject, 6, XN_FLAG_MULTILINE);
     BIO_printf(outbio, "\n\n");
 
-    // TODO: get cert issuer all key-value entries
+    /* Get cert issuer all key-value entries */
     BIO_printf(outbio, "Certificate Issuer:\n");
     X509_NAME *cert_issuer = X509_NAME_new();
     cert_issuer = X509_get_issuer_name(cert);
     X509_NAME_print_ex(outbio, cert_issuer, 6, XN_FLAG_MULTILINE);
     BIO_printf(outbio, "\n\n");
 
-    // get server public key
+    /* Get server public key */
     BIO_printf(outbio, "Server public key:\n");
     EVP_PKEY *public_key = X509_get_pubkey(cert);
     PEM_write_bio_PUBKEY(outbio, public_key);
     BIO_printf(outbio, "\n");
+
+    EVP_PKEY_free(public_key);
   }
+
+  X509_free(cert);
 }
 
 void report_and_exit(const char* msg) {
@@ -118,13 +115,10 @@ void init_ssl() {
   SSL_load_error_strings();
   SSL_library_init();
   OpenSSL_add_all_algorithms();
-  // ERR_load_BIO_strings();
-  // ERR_load_crypto_strings();
 }
 
 void *read_user_input(void *arg) {
   SSL *ssl = arg;
-  char msg_resp[1024];
   char buf[BUFFER_SIZE];
   size_t n;
   fprintf(stderr, "Type your message: \n");
@@ -140,45 +134,30 @@ void *read_user_input(void *arg) {
   }
 
   /* TODO EOF in stdin, shutdown the connection */
-  
+
+  // Ideally we'd want to terminate server here when user hits ctrl-D, but I can't
+  // cause I don't know how to pass in ssl & ctx as parameters of this method
+  // SSL_CTX_free(ctx);
+  // SSL_free(ssl);
+  // close(server);
+
+  // Or we can just include an exit(0)? Not sure if this is ideal tho...
+  //exit(0);
+
+  fprintf(stderr, "Finished TLS connection with server. Shutting down.\n");
   return 0;
 }
 
-
-void *read_ssl_response(void *arg){
+void *read_ssl_response(void *arg) {
   char buf[1024];
   SSL *ssl = arg;
-  while(1){
+  while(1) {
     int bytes = SSL_read(ssl, buf, sizeof(buf));
-	  if ( bytes > 0 ){
+	  if ( bytes > 0 ) {
       buf[bytes] = 0;
-      printf("\received: %s\n", buf);
+      printf("Received: %s\n", buf);
     }
   }
-}
-
-/*  Helper function: use this if you want to extract 
-    IPv4 or IPv6 address from a sockaddr struct
-    Source: https://stackoverflow.com/questions/1276294/getting-ipv4-address-from-a-sockaddr-structure */
-char* get_address_from_sockaddr_struct(struct addrinfo *res) {
-  char *s = NULL;
-  switch(res->ai_addr->sa_family) {
-    case AF_INET: {
-      struct sockaddr_in *addr_in = (struct sockaddr_in *) res->ai_addr;
-      s = malloc(INET_ADDRSTRLEN);
-      inet_ntop(AF_INET, &(addr_in->sin_addr), s, INET_ADDRSTRLEN);
-      break;
-    }
-    case AF_INET6: {
-      struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) res->ai_addr;
-      s = malloc(INET_ADDRSTRLEN);
-      inet_ntop(AF_INET, &(addr_in6->sin6_addr), s, INET_ADDRSTRLEN);
-      break;
-    }
-    default:
-      break;
-  }
-  return s;
 }
 
 SSL_CTX* initialize_context() {
@@ -189,100 +168,72 @@ SSL_CTX* initialize_context() {
   ctx = SSL_CTX_new(method);
 
   if (ctx == NULL) {
-    fprintf(stderr, "Error: Unable to create a new SSL context structure.\n");
-    abort();
+    report_and_exit("Error: Unable to create a new SSL context structure.\n");
   }
   return ctx;
 }
 
-int establish_socket(const char* hostname, const char* port) {
+int establish_socket(const char* hostname, const char* port, BIO* outbio) {
+
   int sock_fd, error;
   struct addrinfo *result, *res;
 
   error = getaddrinfo(hostname, port, NULL, &result);
   if (error != 0) {
-    fprintf(stderr, "Error: Hostname %s in getaddrinfo: %s.\n", hostname, gai_strerror(error));
-    abort();
+    BIO_printf(outbio, "Error: getaddrinfo: %s.\n", gai_strerror(error));
+    exit(-1);
   }
 
   for (res = result; res != NULL; res = res->ai_next) {
-
-    char* ip_address = get_address_from_sockaddr_struct(res);
-    printf("ip_addres = %s\n", ip_address);
-
-    // printf("res->ai_family = %d\n", res->ai_family);
-    // printf("res->ai_socktype = %d\n", res->ai_socktype);
-    // printf("res->ai_protocol = %d\n", res->ai_protocol);
-
-    // Create the socket
+    /* Create the socket */
     sock_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    // printf("sock_fd = %d\n\n", sock_fd);
     if (sock_fd == 1) continue;
 
-    // If connected, break out of loop
+    /* If connected, break out of loop */
     if (connect(sock_fd, res->ai_addr, res->ai_addrlen) != -1) break;
+
     close(sock_fd);
   }
 
-  // Success
   if (res == NULL) {
-    fprintf(stderr, "Error: could not connect to host %s on port %s", hostname, port);
+    BIO_printf(outbio, "Error: could not connect to host %s on port %s", hostname, port);
   } 
 
   return sock_fd;
 }
 
 void secure_connect(const char* hostname, const char *port) {
-  // char buf[BUFFER_SIZE];
-
   SSL *ssl = NULL;
   SSL_CTX *ctx;
-
-  /* Commented out code will be used later */
-
   int server = 0;
-  // BIO *inbio = NULL;
   BIO *outbio = NULL;
-  // X509_NAME *certname = NULL;
-
-  // inbio = BIO_new(BIO_s_file());
   outbio = BIO_new_fp(stderr, BIO_NOCLOSE);
 
   /* TODO Establish SSL context and connection */
-  
-  // create & initialize a new SSL context
   ctx = initialize_context();
-  // create new SSL connection state object
   ssl = SSL_new(ctx);
 
-  // set default verify paths on the context before connection is established
+  /* Set default verify paths on the context before connection is established */
   if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
     BIO_printf(outbio, "Error: failed to specify default paths.\n");
   }
 
-  // create & establish TCP socket connection
-  server = establish_socket(hostname, port);
-  if (server != 0) {
-    fprintf(stderr, "Successfully made TCP connection to %s on %s.\n", hostname, port);
-  }
+  /* Create & establish TCP socket connection */
+  server = establish_socket(hostname, port, outbio);
 
   if (SSL_set_fd(ssl, server) != 1) {
-    fprintf(stderr, "Error: Could not set the file descriptor server as the input/output facility for the TLS/SSL.\n");
-    exit(1);
+    report_and_exit("Error: failed to set the file descriptor as the input/output facility for the TLS connection.\n");
   }
   if (SSL_connect(ssl) != 1) {
-    fprintf(stderr, "Error: Could not initiate a SSL handshake session.\n");
-    exit(1);
-  } else {
-    fprintf(stderr, "Initiaited a SSL handshake session.\n");
+    report_and_exit("Error: Could not initiate a SSL handshake session.\n");
   }
 
   /* TODO Print stats about connection */
   print_master_key(ssl, outbio);
   print_supported_ciphers(ssl, outbio);
-  BIO_printf(outbio, "\n");
   print_server_certificate(ssl, ctx, outbio);
 
+  /* TODO Receive messages and print them to stdout */
   /* Create thread that will read data from stdin */
   pthread_t thread;
   pthread_t thread2;
@@ -291,8 +242,7 @@ void secure_connect(const char* hostname, const char *port) {
   pthread_join( thread, NULL);
   pthread_join( thread2, NULL);
   //pthread_detach(thread);
-  
-  /* TODO Receive messages and print them to stdout */
+
 }
 
 int main(int argc, char *argv[]) {
