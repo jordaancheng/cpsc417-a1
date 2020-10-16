@@ -127,26 +127,34 @@ void *read_user_input(void *arg) {
   char msg_resp[1024];
   char buf[BUFFER_SIZE];
   size_t n;
-  fprintf(stderr, "Type your message: ");
+  fprintf(stderr, "Type your message: \n");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
     n = strlen(buf);
-    if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
-      strcpy(&buf[n-1], "\r\n");
+    // if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
+    //   strcpy(&buf[n-1], "\r\n");
     SSL_write(ssl, buf, n);
     
-    int bytes = SSL_read(ssl, msg_resp, sizeof(msg_resp));
-    msg_resp[bytes] = 0;
-    printf("Received: \"%s\"\n", msg_resp);
-    fprintf(stderr, "Type your message: ");
-    //fprintf(stderr, "--> %s ", buf);
     /* TODO Send message */
   }
 
   /* TODO EOF in stdin, shutdown the connection */
   
   return 0;
+}
+
+
+void *read_ssl_response(void *arg){
+  char buf[1024];
+  SSL *ssl = arg;
+  while(1){
+    int bytes = SSL_read(ssl, buf, sizeof(buf));
+	  if ( bytes > 0 ){
+      buf[bytes] = 0;
+      printf("\received: %s\n", buf);
+    }
+  }
 }
 
 /*  Helper function: use this if you want to extract 
@@ -258,7 +266,10 @@ void secure_connect(const char* hostname, const char *port) {
     fprintf(stderr, "Successfully made TCP connection to %s on %s.\n", hostname, port);
   }
 
-  SSL_set_fd(ssl, server);
+  if (SSL_set_fd(ssl, server) != 1) {
+    fprintf(stderr, "Error: Could not set the file descriptor server as the input/output facility for the TLS/SSL.\n");
+    exit(1);
+  }
   if (SSL_connect(ssl) != 1) {
     fprintf(stderr, "Error: Could not initiate a SSL handshake session.\n");
     exit(1);
@@ -274,8 +285,11 @@ void secure_connect(const char* hostname, const char *port) {
 
   /* Create thread that will read data from stdin */
   pthread_t thread;
+  pthread_t thread2;
   pthread_create(&thread, NULL, read_user_input, ssl);
+  pthread_create(&thread2, NULL, read_ssl_response, ssl);
   pthread_join( thread, NULL);
+  pthread_join( thread2, NULL);
   //pthread_detach(thread);
   
   /* TODO Receive messages and print them to stdout */
