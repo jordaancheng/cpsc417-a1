@@ -131,15 +131,18 @@ void *read_user_input(void *arg) {
   int server = args->server;
   char buf[BUFFER_SIZE];
   size_t n;
+  int res;
   fprintf(stderr, "Type your message: \n");
   while (fgets(buf, sizeof(buf) - 1, stdin)) {
     /* Most text-based protocols use CRLF for line-termination. This
        code replaced a LF with a CRLF. */
     n = strlen(buf);
-    // if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
-    //   strcpy(&buf[n-1], "\r\n");
-    SSL_write(ssl, buf, n);
-    
+    if (buf[n-1] == '\n' && (n == 1 || buf[n-2] != '\r'))
+      strcpy(&buf[n-1], "\r\n");
+    res = SSL_write(ssl, buf, strlen(buf));
+    if (res <  0){
+      fprintf(stderr, "ERROR: could not Send msg \n"); 
+    }
     /* TODO Send message */
   }
 
@@ -163,7 +166,7 @@ void *read_ssl_response(void *arg) {
     int bytes = SSL_read(ssl, buf, sizeof(buf));
 	  if ( bytes > 0 ) {
       buf[bytes] = 0;
-      printf("Received: %s\n", buf);
+      fprintf(stderr,"Received: %s\n", buf);
     }
   }
 }
@@ -252,7 +255,8 @@ void secure_connect(const char* hostname, const char *port) {
   pthread_create(&thread2, NULL, read_ssl_response, ssl);
   pthread_join( thread, NULL);
   pthread_join( thread2, NULL);
-  //pthread_detach(thread);
+  pthread_detach(thread);
+  pthread_detach(thread2);
 
 }
 
