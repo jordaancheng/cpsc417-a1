@@ -149,12 +149,9 @@ void *read_user_input(void *arg) {
   /* TODO EOF in stdin, shutdown the connection */
 
   fprintf(stderr, "Finished TLS connection with server. Shutting down.\n");
-  // Ideally we'd want to terminate server here when user hits ctrl-D, but I can't
-  // cause I don't know how to pass in ssl & ctx as parameters of this method
   SSL_CTX_free(ctx);
   SSL_free(ssl);
   close(server);
-  // Or we can just include an exit(0)? Not sure if this is ideal tho...exit(0);
   exit(0);
   return 0;
 }
